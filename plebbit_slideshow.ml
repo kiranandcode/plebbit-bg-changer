@@ -1,6 +1,3 @@
-[@@@warning "-33"]
-[@@@warning "-27"]
-[@@@warning "-26"]
 open Core
 open Lwt
 open Cohttp
@@ -255,9 +252,6 @@ let load_database_from_config_dir config_dir =
 (** saves tracking database to configuration directory *)
 let save_database_to_config_dir config_dir db =
   let db_file = Fpath.(config_dir / "database.binio") |> Fpath.to_string in
-  let invalid_read_permissions () =
-    raise (Failure
-             (Printf.sprintf "Bad Config Dir - not have read permissions for %s" db_file)) in
   Database.write_to_file db_file db
 
 (** wraps a value behind a thread-safe getter  *)
@@ -328,9 +322,12 @@ let download_subreddits ?(sort=`Hot) ?(count=20)
       ~username:client_username ~password:client_password ~pass_entry:client_pass_entry in
   let reddit_details =
     try
-      Some (retrieve_from_components ~name:"user"
-              ~env_user_name:"REDDIT_USER_NAME" ~env_pass_name:"REDDIT_USER_PASSWORD"
-              ~username:reddit_username ~password:reddit_password ~pass_entry:auth_pass_entry)
+      if auth_from_pass then
+        Some (retrieve_from_components ~name:"user"
+                ~env_user_name:"REDDIT_USER_NAME" ~env_pass_name:"REDDIT_USER_PASSWORD"
+                ~username:reddit_username ~password:reddit_password ~pass_entry:auth_pass_entry)
+      else
+        None
     with Failure _ -> None in
   let authentication_context = match reddit_details with
     | None ->
@@ -401,7 +398,7 @@ let download_subreddits ?(sort=`Hot) ?(count=20)
               let hash = String.hash data in
               let url = url |> Uri.to_string in
               let path = save_path in
-              Lwt.return @@ match Database.add_file ~url db ~hash ~path with
+              Lwt.return @@ match Database.add_file ~avoid_duplicates ~url db ~hash ~path with
               | `Inserted -> true
               | `Duplicate -> false
               | `UrlDuplicate -> false
